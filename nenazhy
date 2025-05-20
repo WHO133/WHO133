@@ -1,0 +1,48 @@
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils import executor
+from dotenv import load_dotenv
+import os
+from scenes import SCENES
+
+load_dotenv()
+
+API_TOKEN = os.getenv("BOT_TOKEN")
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
+
+user_states = {}
+
+def generate_keyboard(scene_id):
+    buttons = []
+    for i, option in enumerate(SCENES[scene_id]["options"], start=1):
+        buttons.append(
+            [InlineKeyboardButton(text=option["text"], callback_data=f"{scene_id}_{i}")]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+@dp.message_handler(commands=["start"])
+async def send_welcome(message: types.Message):
+    user_states[message.from_user.id] = "scene_1"
+    scene = SCENES["scene_1"]
+    await message.answer(scene["text"], reply_markup=generate_keyboard("scene_1"))
+
+@dp.callback_query_handler(lambda c: True)
+async def process_callback(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    current_scene_id, choice_index = callback_query.data.split("_")
+    choice_index = int(choice_index) - 1
+
+    next_scene_id = SCENES[current_scene_id]["options"][choice_index]["next"]
+    user_states[user_id] = next_scene_id
+
+    scene = SCENES[next_scene_id]
+    await bot.send_message(user_id, scene["text"], reply_markup=generate_keyboard(next_scene_id))
+    await callback_query.answer()
+
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
